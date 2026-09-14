@@ -1,0 +1,25 @@
+# 환경변수 (API 키)
+.env
+.env.*
+!.env.example
+
+# 기업 제공 자료 — 저장소에 올리지 않음
+data/
+docs/client/
+*.pdf
+*.xlsx
+*.xls
+*.docx
+*.pptx
+*.hwp
+
+# 이미지 원본
+assets/raw/
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# 에디터 설정
+.vscode/
+.idea/
