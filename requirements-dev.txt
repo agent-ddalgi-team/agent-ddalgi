@@ -1,0 +1,4 @@
+# 백엔드 검증 스크립트용 (서버 실행 패키지 포함)
+-r requirements.txt
+httpx==0.28.1      # scripts/check_backend.py HTTP 시험, FastAPI TestClient
+jsonschema==4.26.0 # validate_fixtures.py

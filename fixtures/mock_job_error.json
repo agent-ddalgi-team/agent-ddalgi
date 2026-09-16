@@ -1,0 +1,11 @@
+{
+  "job_id": "mock-job-error",
+  "status": "error",
+  "result": null,
+  "error": {
+    "code": "NEEDS_TEXT_SOURCE",
+    "stage": "extracting",
+    "message": "텍스트를 추출하지 못했습니다. 확인한 텍스트본을 사용해 주세요.",
+    "retryable": false
+  }
+}

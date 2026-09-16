@@ -1,0 +1,27 @@
+[
+  {
+    "key": "company_summary",
+    "title": "회사 개요",
+    "paragraphs": [
+      {
+        "text": "테스트 회사는 테스트용 기업입니다.",
+        "fact_ids": [
+          "F001",
+          "F002"
+        ]
+      }
+    ]
+  },
+  {
+    "key": "business_areas",
+    "title": "사업 분야",
+    "paragraphs": [
+      {
+        "text": "사업 분야는 테스트 사업 A입니다.",
+        "fact_ids": [
+          "F003"
+        ]
+      }
+    ]
+  }
+]

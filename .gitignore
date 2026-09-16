@@ -30,3 +30,11 @@ venv/
 env/
 __pycache__/
 *.pyc
+
+# 백엔드 로컬 실행 중 생긴 자료 — 업로드 원본·추출 기록·생성 초안
+private_runs/
+uploads/
+outputs/
+
+# 실행 로그
+*.log

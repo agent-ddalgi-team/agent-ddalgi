@@ -1,0 +1,7 @@
+# C 백엔드 서버 실행에 필요한 패키지 (Python 3.12.10, Windows 11에서 검증한 버전)
+fastapi==0.141.1
+uvicorn==0.51.0
+python-multipart==0.0.32  # multipart/form-data(files, company_name_hint) 수신
+openai==3.14.0            # A의 backend/agent.py 실제 LLM 호출 (A PC에서 검증한 버전)
+python-dotenv==1.2.3      # .env에서 AGENT_MODE·OPENAI_API_KEY·OPENAI_MODEL 로드
+jsonschema==4.26.0        # validating 단계의 최종 결과 스키마 검사
