@@ -23,3 +23,10 @@ Thumbs.db
 # 에디터 설정
 .vscode/
 .idea/
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
