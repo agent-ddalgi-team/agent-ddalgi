@@ -262,3 +262,68 @@ D 모듈 자리에 **이 스크립트 안에서만 쓰는 시험용 임시 대�
 
 **전달 여부 구분**
 - `handoff/day2_전달사항.md`를 **작성**했다. 이 PC에서 A/B/D에게 **실제로 보냈는지는 확인되지 않았다**(전달 기록 없음).
+
+---
+
+# 팀 저장소 PR #1 보완 — A 모듈 미수령 상황 처리
+
+브랜치 `feat/company-profile-backend`(base `develop`). 원본 개인 폴더가 아니라 팀 저장소
+`agent-ddalgi`에서 작업한 내용이다.
+
+## 무엇이 문제였나
+
+팀 저장소에는 A의 `backend/agent.py`가 없다(A가 직접 올릴 파일이라 C가 넣지 않았다).
+그 상태에서 `llm` 모드로 작업을 돌리면 `_run_llm_job()`이 함수에 들어오자마자
+`from backend import agent`에서 실패했는데, 그 시점의 작업 상태가 아직 `extracting`이었다. 결과적으로
+
+- 오류 단계가 `analyzing`이 아니라 `extracting`으로 기록되고,
+- `run_meta.json`이 아예 남지 않아 **실제 호출을 하지 않았다는 사실이 기록되지 않았다**.
+
+`scripts/check_llm_mode.py`가 이 두 가지를 잡아 2건 실패했다(초기 PR 본문에 그대로 적었다).
+
+## 고친 내용 (`backend/main.py`)
+
+- 모듈 적재보다 **먼저 `status`를 `analyzing`으로 바꾼다.** 실제 호출을 시도하는 단계가 `analyzing`이므로
+  적재 실패도 그 단계의 오류로 남는다.
+- 적재를 `_load_agent_module()`로 분리해 **원인을 세 가지로 구분**한다.
+
+| 원인 | run_meta.json의 note | 사용자에게 보이는 안내 |
+|---|---|---|
+| A의 `backend/agent.py` 미수령 | `A의 backend/agent.py 미수령(추출 기능 미연결)` | 추출 기능이 아직 연결되지 않았습니다… |
+| 모듈은 있으나 의존 패키지 없음(openai 등) | `agent 모듈이 필요로 하는 패키지 없음: <이름>` | AI 호출에 필요한 패키지가 설치되어 있지 않습니다… |
+| 모듈 로드 중 다른 오류(문법 오류 등) | `agent 모듈 로드 중 오류(상세는 서버 로그)` | 추출 기능을 불러오지 못했습니다… |
+
+- 공통 오류 코드는 계약 범위 안의 **`INVALID_OUTPUT`**, 단계는 **`analyzing`**이다. 새 코드를 만들지 않았다.
+- **실제 AI를 부르지 못했으므로 `run_meta.json`에 `llm_called=false`와 위 사유를 남긴다.**
+- `result=null`, `status=error`, **Mock 대체 없음**, 잠금 해제로 다음 작업 접수 가능 — 이전 동작 그대로 유지된다.
+- **가짜 `agent.py`를 만들지 않았고, 실패하던 검사를 지우거나 건너뛰지 않았다.** 코드가 실제로 상황을 처리하게 고쳤다.
+
+## 검증 (팀 저장소 코드 기준, 가짜 자료·오프라인)
+
+| 검사 | 결과 |
+|---|---|
+| `scripts/check_llm_mode.py` | 9/9 PASS + 1건 건너뜀 |
+| `scripts/check_backend.py --offline` | 9/9 PASS |
+| `scripts/check_upload_storage.py --offline` | 9/9 PASS |
+| `scripts/check_document_api.py` | 25/25 PASS (시험용 대역 기준) |
+| `validate_fixtures.py` | PASS |
+
+`check_llm_mode.py`에 실패 원인 구분 확인 2건을 더했다(`run_meta.note`, 안내 문구). 이 검사는 저장소에
+`agent.py`가 있는지에 따라 기대값을 바꿔 판정한다.
+
+**건너뛴 1건**: "의존성 누락 분류"는 `backend/agent.py`가 없으면 자동으로 시험할 수 없어 건너뛴다.
+이 분기는 **저장소 밖 임시 사본**에 시험용 파일을 두고 한 번 확인했다(분류 PASS).
+그 파일은 저장소에 넣지 않았고, 커밋에도 없다.
+
+## 단정하지 않는 것
+
+- **"A 파일이 올라오면 통과한다"고 적지 않는다.** 이번에 확인한 것은 *A 모듈이 없을 때* 서버가
+  올바른 단계·코드·기록으로 실패한다는 것뿐이다. **A 코드를 받은 뒤에는 실제 연동을 다시 검증해야 한다**
+  (`extract_company_info`의 실제 입출력, `.env` 설정, 실제 호출 성공, `company_info.json` 기록).
+- 실제 OpenAI 호출, 실제 MD/DOCX 파일 생성, 브라우저 클릭 시험은 여전히 하지 않았다.
+
+## 참고: 폴더가 갈라졌다
+
+이 수정은 팀 저장소(`Documents\Codex\agent-ddalgi`)에만 적용했다. 개인 작업 폴더
+(`final-project\projects\02-company-profile`)의 `backend/main.py`는 아직 이전 코드다.
+개인 폴더에서 서버를 띄워 시험할 때는 이 차이를 감안해야 한다.

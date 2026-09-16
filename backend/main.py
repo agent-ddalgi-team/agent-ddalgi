@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import importlib
+import importlib.util
 import json
 import logging
 import os
@@ -332,17 +334,62 @@ def _write_run_meta(job: dict, llm_called: bool, note: str) -> None:
         logger.exception("run_meta.json 기록 실패: %s", job["job_id"])
 
 
+AGENT_MODULE = "backend.agent"  # A 소유. C가 대신 만들지 않는다.
+
+
+def _load_agent_module() -> tuple[object | None, tuple[str, str] | None]:
+    """A의 추출 모듈을 불러온다. 실패하면 (None, (기록용 사유, 사용자 안내))를 돌려준다.
+
+    A 모듈을 아직 못 받은 것과, 모듈은 있으나 그 안에서 쓰는 패키지(openai 등)가 없는 것을 구분한다.
+    둘 다 실제 AI 호출은 일어나지 않았으므로 호출 여부는 run_meta.json에 false로 남긴다.
+    """
+    try:
+        found = importlib.util.find_spec(AGENT_MODULE) is not None
+    except ImportError:
+        found = False
+    if not found:
+        return None, (
+            "A의 backend/agent.py 미수령(추출 기능 미연결)",
+            "추출 기능이 아직 연결되지 않았습니다. 업로드와 추출 기록은 남았지만 회사 정보를 분석할 수 없습니다.",
+        )
+    try:
+        return importlib.import_module(AGENT_MODULE), None
+    except ImportError as exc:
+        # agent.py는 있는데 그 모듈이 불러오는 패키지가 없다(예: openai 미설치). A 미수령과 다른 원인이다.
+        missing = getattr(exc, "name", None) or "이름 미상"
+        logger.error("agent 모듈 의존성 없음: %s", missing)
+        return None, (
+            f"agent 모듈이 필요로 하는 패키지 없음: {missing}",
+            "AI 호출에 필요한 패키지가 설치되어 있지 않습니다. requirements.txt로 만든 환경에서 서버를 실행해 주세요.",
+        )
+    except Exception:
+        # 문법 오류 등 모듈 자체의 문제. 상세는 서버 로그로만 남긴다.
+        logger.exception("agent 모듈을 불러오지 못했습니다")
+        return None, (
+            "agent 모듈 로드 중 오류(상세는 서버 로그)",
+            "추출 기능을 불러오지 못했습니다. 서버 로그를 확인해 주세요.",
+        )
+
+
 def _run_llm_job(job: dict) -> None:
     """llm 모드: A의 extract_company_info()를 실제 호출한다. 어떤 실패도 Mock으로 대체하지 않는다.
 
-    A의 draft_profile()과 D의 검사 모듈이 아직 없으므로, 지금은 추출 중간 결과까지 기록하고
-    drafting 단계에서 error로 끝난다(중간 결과만으로 ready를 만들지 않는다).
+    A의 backend/agent.py가 아직 없으면 analyzing 단계에서 error로 끝난다(가짜 모듈로 메우지 않는다).
+    A의 draft_profile()과 D의 검사 모듈이 없으면 그 다음 단계에서 error로 끝난다
+    (중간 결과만으로 ready를 만들지 않는다).
     """
     job_dir = PRIVATE_RUNS / job["job_id"]
-    # openai 의존성은 llm 모드에서만 필요하므로 여기서 불러온다.
-    from backend import agent
-
+    # A 모듈(그리고 openai 의존성)은 llm 모드에서만 필요하므로 여기서 불러온다.
+    # 실제 호출을 시도하는 단계가 analyzing이므로, 적재 실패도 analyzing 단계의 오류로 남긴다.
     job["status"] = "analyzing"
+    agent, load_failure = _load_agent_module()
+    if agent is None:
+        note, message = load_failure
+        _write_run_meta(job, llm_called=False, note=note)
+        # 실제 AI를 부르지 못했으므로 성공으로 보충하지 않는다(Mock 대체 없음, 중간 결과도 없음).
+        _fail(job, _error("INVALID_OUTPUT", "analyzing", message))
+        return
+
     try:
         company_info = agent.extract_company_info(job["agent_input"])
     except agent.AgentError as exc:
