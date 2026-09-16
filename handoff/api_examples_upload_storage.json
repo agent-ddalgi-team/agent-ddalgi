@@ -1,0 +1,46 @@
+{
+  "note": "파일 크기 초과·저장 실패 응답 예시(가짜 데이터). 500·저장 실패 예시는 임시 폴더에서 예외를 주입한 내부 시험 응답이다.",
+  "generated_by": "python scripts/check_upload_storage.py",
+  "generated_at": "2026-09-16 16:00:36",
+  "examples": {
+    "HTTP 413 INPUT_TOO_LARGE (3개 중 2번째 파일 10MB 초과)": {
+      "request": "POST /api/profiles files=good_1.txt, over.txt(10MB+1B), good_3.txt",
+      "http_status": 413,
+      "body": {
+        "error": {
+          "code": "INPUT_TOO_LARGE",
+          "stage": "queued",
+          "message": "파일당 10MB를 넘을 수 없습니다.",
+          "retryable": false
+        }
+      }
+    },
+    "HTTP 500 INVALID_OUTPUT (업로드 파일 저장 실패, 예외 주입 시험)": {
+      "request": "POST /api/profiles files=mock_source_a.txt,mock_source_b.txt (작업 폴더 생성 실패 주입)",
+      "http_status": 500,
+      "body": {
+        "error": {
+          "code": "INVALID_OUTPUT",
+          "stage": "queued",
+          "message": "업로드 파일을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          "retryable": true
+        }
+      }
+    },
+    "GET error INVALID_OUTPUT (추출 기록 저장 실패, 예외 주입 시험)": {
+      "request": "GET /api/profiles/44f2fa89-f9c9-46c1-843c-9b55ecc3c3bf (agent_input.json 쓰기 실패 주입)",
+      "http_status": 200,
+      "body": {
+        "job_id": "44f2fa89-f9c9-46c1-843c-9b55ecc3c3bf",
+        "status": "error",
+        "result": null,
+        "error": {
+          "code": "INVALID_OUTPUT",
+          "stage": "extracting",
+          "message": "추출 결과를 저장하지 못했습니다. 잠시 후 다시 업로드해 주세요.",
+          "retryable": true
+        }
+      }
+    }
+  }
+}

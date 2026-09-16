@@ -1,0 +1,17 @@
+[
+  {
+    "field": "company_name",
+    "fact_id": "F001",
+    "text": "테스트 회사"
+  },
+  {
+    "field": "company_summary",
+    "fact_id": "F002",
+    "text": "테스트용 기업입니다."
+  },
+  {
+    "field": "business_areas",
+    "fact_id": "F003",
+    "text": "테스트 사업 A"
+  }
+]

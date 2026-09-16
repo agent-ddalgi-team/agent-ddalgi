@@ -1,0 +1,76 @@
+{
+  "job_id": "7e658ea0-298b-413f-9319-fa77394eab53",
+  "limits": {
+    "max_files": 3,
+    "max_file_bytes": 10485760,
+    "max_total_chars": 40000,
+    "note": "팀 합의 전 제안값"
+  },
+  "total_chars": 83,
+  "stored_files": [
+    {
+      "source_id": "S001",
+      "stored_name": "S001.txt",
+      "display_name": "mock_source_a.txt",
+      "size_bytes": 153,
+      "sha256": "8341bdd041e0b6b66f4c4652309c1edbc87f309bc136d5fefff83f4c35cb6a6e"
+    },
+    {
+      "source_id": "S002",
+      "stored_name": "S002.txt",
+      "display_name": "mock_source_b.txt",
+      "size_bytes": 45,
+      "sha256": "3c35bb280d9135349001ed2616efdc24661a27800847965fd20b69d18bd24391"
+    }
+  ],
+  "source_manifest": [
+    {
+      "source_id": "S001",
+      "file_name": "mock_source_a.txt",
+      "document_date": null
+    },
+    {
+      "source_id": "S002",
+      "file_name": "mock_source_b.txt",
+      "document_date": null
+    }
+  ],
+  "warnings": [],
+  "source_units": [
+    {
+      "source_id": "S001",
+      "locator": "1행",
+      "text": "회사명: 테스트 회사"
+    },
+    {
+      "source_id": "S001",
+      "locator": "2행",
+      "text": "회사 개요: 테스트용 기업입니다."
+    },
+    {
+      "source_id": "S001",
+      "locator": "3행",
+      "text": "사업 분야: 테스트 사업 A"
+    },
+    {
+      "source_id": "S001",
+      "locator": "4행",
+      "text": "공정 수: 2개"
+    },
+    {
+      "source_id": "S001",
+      "locator": "5행",
+      "text": "납기 표현: 빠른 납기"
+    },
+    {
+      "source_id": "S002",
+      "locator": "1행",
+      "text": "회사명: 테스트 회사"
+    },
+    {
+      "source_id": "S002",
+      "locator": "2행",
+      "text": "공정 수: 3개"
+    }
+  ]
+}
