@@ -12,6 +12,7 @@ contracts/contract.md v1.0 기준.
     연결되어야 진행되고, 없으면 중간 결과만 기록하고 error로 끝낸다(중간 결과로 ready 금지).
 - 작업 폴더 기록(내부, 공개 API 응답에 넣지 않음): extraction.json, agent_input.json,
   company_info.json(LLM 추출 중간 결과), run_meta.json(모드·실제 호출 여부), result.json(최종).
+- CORS: 프론트엔드가 별도 레포·포트(Vite 5173)로 분리되어, 다른 origin에서의 API 호출을 허용한다.
 
 실행: cd projects/02-company-profile && .venv\\Scripts\\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 """
@@ -33,6 +34,7 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -55,6 +57,12 @@ if AGENT_MODE not in {"mock", "llm"}:
 # 결과의 is_mock은 항상 true다(테스트 데이터 표시). 실제 LLM 호출 여부는 run_meta.json에 따로 남긴다.
 RESULT_IS_MOCK = True
 
+# 프론트엔드 개발 서버(Vite)의 origin. 배포 시 실제 프론트 주소를 환경변수 FRONTEND_ORIGINS
+# (쉼표 구분)로 추가할 수 있다. 예: FRONTEND_ORIGINS=https://app.example.com
+_DEFAULT_FRONTEND_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_extra_origins = [o.strip() for o in (os.environ.get("FRONTEND_ORIGINS") or "").split(",") if o.strip()]
+CORS_ALLOW_ORIGINS = _DEFAULT_FRONTEND_ORIGINS + _extra_origins
+
 logger = logging.getLogger(__name__)
 
 # 아래 세 상한은 contract.md의 초기 제안값이며 팀 합의 전이다(docs/day1.md 기록).
@@ -65,6 +73,16 @@ ALLOWED_EXTENSIONS = {".txt", ".md"}  # PDF/DOCX는 첫날 미구현
 SCHEMA_VERSION = "1.0"
 
 app = FastAPI(title="회사소개서 초안 백엔드 (첫날·Mock)")
+
+# 프론트(별도 origin, Vite 개발 서버)에서 API를 호출할 수 있도록 CORS 허용.
+# 같은 서버에서 정적 파일로 제공하던 첫날과 달리, 프론트가 별도 레포·포트(5173)로 분리됨.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
