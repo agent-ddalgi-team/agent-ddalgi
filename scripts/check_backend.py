@@ -5,7 +5,8 @@
     python scripts/check_backend.py --offline  # 서버 없이 프로세스 내부 시험만
 
 PASS는 출력된 각 항목을 실제로 검사해 통과했다는 뜻뿐이다.
-검사하지 않는 것: 실제 기업 자료·결과 내용의 사실성, 실제 Agent/LLM, PDF/DOCX, 문서 생성, B 화면 표시.
+검사하지 않는 것: 실제 기업 자료·결과 내용의 사실성, 실제 Agent/LLM, PDF/DOCX 입력 파싱, B 화면 표시.
+HTTP 시험은 실제 MD/DOCX 다운로드의 바이트·헤더·본문·검토 부록도 검사한다.
 HTTP 시험은 실제 응답을 handoff/api_examples.json에 저장한다(B 전달용 예시).
 시험 중 만든 작업 폴더는 private_runs/ 아래에 남는다(가짜 데이터).
 """
@@ -15,6 +16,7 @@ import argparse
 import concurrent.futures
 import hashlib
 import importlib
+import io
 import json
 import os
 import sys
@@ -135,6 +137,59 @@ def is_ready_mock(final) -> bool:
 
 def example(name: str, request: str, status: int, body: dict) -> None:
     examples[name] = {"request": request, "http_status": status, "body": body}
+
+
+def document_checks(job_id: str, profile: dict) -> None:
+    media_types = {
+        "md": "text/markdown; charset=utf-8",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+    for fmt, content_type in media_types.items():
+        res = httpx.post(f"{BASE}/api/profiles/{job_id}/document", json={"format": fmt}, timeout=10)
+        examples[f"HTTP 200 문서 다운로드 ({fmt})"] = {
+            "request": f"POST /api/profiles/{job_id}/document format={fmt}",
+            "http_status": res.status_code,
+            "content_type": res.headers.get("content-type"),
+            "content_disposition": res.headers.get("content-disposition"),
+            "size_bytes": len(res.content),
+        }
+        if not check(f"{fmt} 문서 → 200, 올바른 MIME", res.status_code == 200
+                     and res.headers.get("content-type") == content_type):
+            continue
+        disposition = res.headers.get("content-disposition", "")
+        check(f"{fmt} 다운로드 파일명·attachment 헤더",
+              "attachment" in disposition and "%ED%9A%8C%EC%82%AC" in disposition
+              and disposition.endswith(f".{fmt}"))
+        path = RUNS / job_id / "documents" / f"회사소개서_초안.{fmt}"
+        check(f"{fmt} 응답이 작업 폴더의 비어 있지 않은 파일과 같음",
+              bool(res.content) and path.is_file() and path.read_bytes() == res.content)
+        try:
+            if fmt == "md":
+                lines = [line.removeprefix("### ") for line in res.content.decode("utf-8").splitlines() if line]
+                start, end = lines.index("## 소개서 본문"), lines.index("## 확인 질문")
+            else:
+                from docx import Document
+                lines = [p.text for p in Document(io.BytesIO(res.content)).paragraphs if p.text]
+                start, end = lines.index("소개서 본문"), lines.index("확인 질문")
+        except Exception as exc:
+            check(f"{fmt} 실제 문서 형식으로 읽기", False, type(exc).__name__)
+            continue
+        check(f"{fmt} 실제 문서 형식으로 읽기", True)
+        expected = [text for section in profile["draft_sections"]
+                    for text in [section["title"], *[p["text"] for p in section["paragraphs"]]]]
+        check(f"{fmt} 13개 섹션 순서·본문이 조회 결과와 정확히 같음", lines[start + 1:end] == expected)
+        text = "\n".join(lines)
+        appendix = "\n".join(lines[end:])
+        check(f"{fmt} 테스트·내부 검토 표시와 질문·자료·인용 부록 유지",
+              "테스트 데이터" in text and "내부 검토용" in text
+              and all(q["question"] in appendix for q in profile["needs_confirmation"])
+              and all(s["file_name"] in appendix for s in profile["sources"])
+              and all(e["quote"] in appendix and e["locator"] in appendix
+                      for field in profile["company_info"].values()
+                      for fact in field["facts"] for e in fact["evidence"]))
+
+    after = httpx.get(f"{BASE}/api/profiles/{job_id}", timeout=10).json()
+    check("문서 다운로드 뒤에도 ready·result 유지", after["status"] == "ready" and after["result"] == profile)
 
 
 def http_checks() -> None:
@@ -300,10 +355,11 @@ def http_checks() -> None:
     example("HTTP 404 JOB_NOT_FOUND", f"GET /api/profiles/{missing}", r.status_code, r.json())
     check("없는 작업 번호 → 404 JOB_NOT_FOUND", r.status_code == 404 and is_error_body(r.json(), "JOB_NOT_FOUND"))
 
-    r = httpx.post(f"{BASE}/api/profiles/{first_job}/document", json={"format": "md"}, timeout=10)
-    example("HTTP 409 DOCUMENT_FAILED (문서 API 미구현)", f"POST /api/profiles/{first_job}/document format=md",
+    document_checks(first_job, MOCK_PROFILE)
+    r = httpx.post(f"{BASE}/api/profiles/{first_job}/document", json={"format": "pdf"}, timeout=10)
+    example("HTTP 409 DOCUMENT_FAILED (미지원 문서 형식)", f"POST /api/profiles/{first_job}/document format=pdf",
             r.status_code, r.json())
-    check("문서 API → 성공을 반환하지 않고 409 DOCUMENT_FAILED",
+    check("미지원 문서 형식 → 409 DOCUMENT_FAILED",
           r.status_code == 409 and is_error_body(r.json(), "DOCUMENT_FAILED"))
 
     # ── 동시 업로드(1MB 초과 파일은 디스크 임시파일에서 읽음) ─────────
@@ -455,7 +511,7 @@ def main() -> None:
 
     failed = [name for name, ok in results if not ok]
     print(f"\n합계: PASS {len(results) - len(failed)} / FAIL {len(failed)} — 위에 출력된 항목만 검사함")
-    print("검사하지 않음: 실제 기업 자료·결과 사실성, 실제 Agent/LLM, PDF/DOCX, 문서 파일 생성, B 화면 표시·동작")
+    print("검사하지 않음: 실제 기업 자료·결과 사실성, 실제 Agent/LLM, PDF/DOCX 입력 파싱, 문서 시각 검토, B 화면 표시·동작")
     sys.exit(1 if failed else 0)
 
 

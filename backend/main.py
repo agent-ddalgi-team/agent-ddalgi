@@ -445,7 +445,13 @@ def _run_llm_job(job: dict) -> None:
                           "본문 생성 기능이 아직 연결되지 않았습니다. 추출 결과는 저장했지만 초안을 완성할 수 없습니다."))
         return
     # supported 사실이 하나도 없으면 본문 생성을 억지로 호출하지 않고 안내 문구만으로 조립한다.
-    generated_sections = agent.draft_profile(supported_facts) if supported_facts else []
+    try:
+        generated_sections = agent.draft_profile(supported_facts) if supported_facts else []
+    except agent.AgentError as exc:
+        # 본문 생성에도 추출과 같은 공통 오류 규칙을 적용해 시간 초과를 보존한다.
+        _write_run_meta(job, llm_called=True, note=f"draft_profile 실패: {exc.code}[{exc.rule}]")
+        _fail(job, _error(exc.code, "drafting", exc.message, exc.code == "LLM_TIMEOUT"))
+        return
     profile = profile_builder.assemble_profile(
         company_info, generated_sections, job["source_manifest"], is_mock=RESULT_IS_MOCK
     )
