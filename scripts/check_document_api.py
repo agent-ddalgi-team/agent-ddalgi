@@ -1,7 +1,7 @@
 r"""POST /api/profiles/{job_id}/document 연결 지점 확인 (서버를 따로 켜지 않고 TestClient로 검사).
 
-D의 backend/document_generator.render_document가 아직 없으므로, 이 스크립트는 그 자리에
-**시험 전용 임시 대역**을 sys.modules에 잠깐 끼워 넣어 C의 API 쪽 처리만 확인한다.
+D의 backend/document_generator 유무와 무관하게, 모듈 부재는 명시적으로 재현하고
+**시험 전용 임시 대역**을 sys.modules에 잠깐 끼워 넣어 C의 API 쪽 처리도 확인한다.
 대역은 이 파일 안에만 있고 backend/에 저장하지 않는다. 실제 문서 생성 기능(D 소유)이 아니며,
 이 검사가 통과해도 문서 생성 기능이 준비되었다는 뜻이 아니다.
 
@@ -16,6 +16,7 @@ import time
 import sys
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -69,7 +70,7 @@ def error_code(res) -> str | None:
 
 
 def main_check() -> int:
-    remove_stub()  # 실제 D 모듈이 들어와 있으면 이 검사 대신 실물로 확인해야 한다.
+    remove_stub()
     with TestClient(main.app) as client:
         job_id = make_ready_job(client)
         job_dir = main.PRIVATE_RUNS / job_id
@@ -82,10 +83,12 @@ def main_check() -> int:
         res = client.post("/api/profiles/pending-job/document", json={"format": "md"})
         check(res.status_code == 409 and error_code(res) == "DOCUMENT_FAILED", "ready 아님 → 409 DOCUMENT_FAILED")
 
-        # 1) D 모듈이 없을 때(오늘 실제 상태): 형식이 맞아도 성공하지 않는다.
-        res = client.post(f"/api/profiles/{job_id}/document", json={"format": "md"})
+        # 1) 실제 D 모듈이 설치되어 있어도 미연결 오류 경로를 확실히 재현한다.
+        with patch.dict(sys.modules, {"backend.document_generator": None}):
+            res = client.post(f"/api/profiles/{job_id}/document", json={"format": "md"})
         check(res.status_code == 409 and error_code(res) == "DOCUMENT_FAILED", "D 모듈 없음 → 409 DOCUMENT_FAILED")
-        check("아직 연결되지 않았습니다" in res.json()["error"]["message"], "안내 문구가 미연결 상태를 알린다")
+        check(error_code(res) == "DOCUMENT_FAILED"
+              and "아직 연결되지 않았습니다" in res.json()["error"]["message"], "안내 문구가 미연결 상태를 알린다")
 
         # 2) 형식 값 검사 (대역이 없어도 형식부터 막는다)
         for body, label in (({"format": "pdf"}, "미지원 형식 pdf"), ({}, "format 없음"), (None, "JSON 본문 없음")):
